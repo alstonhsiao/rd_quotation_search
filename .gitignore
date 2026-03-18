@@ -1,0 +1,42 @@
+# 環境變數與機密資訊
+.env
+.env.local
+service_account.json
+
+# Google Sheets 匯出的 CSV
+latest.csv
+*.csv
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+
+# n8n workflow 部署版本
+n8n_workflow_deploy.json
+n8n_workflow_hardcoded.json
+n8n_workflow_template.json
+
+# 日誌檔案
+*.log
+/tmp/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# VS Code
+.vscode/
+*.code-workspace
+
+# 備份檔案
+*.bak
+*.swp
+*.swo
+*~
