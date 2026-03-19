@@ -9,6 +9,8 @@
 - **目的**：讓公司成員透過 LINE 搜尋「首君供應商報價管理表單」，快速找到歷史報價資料
 - **部署環境**：n8n self-hosted (`https://alstonn8n2026.zeabur.app`)
 - **資料來源**：GitHub 託管 JSON 資料庫（`quotations.json`，由同步流程定時更新）
+- **資料筆數**：490 筆（最後更新：2026-03-19）
+- **Workflow ID**：`WUI9OBlNcbvalbs8`（已啟用）
 - **前端**：LINE Messaging API（指令格式 + Flex Message）
 - **設計特色**：Stateless（無 session 管理）
 
