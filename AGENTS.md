@@ -222,3 +222,53 @@ return [{ json: { action: 'menu', replyToken } }];
 - 若欄 F 有多個 Drive 連結（逗號分隔），目前只取第一個
 - JSON 資料更新頻率取決於同步排程；非即時讀取試算表
 - Stateless 設計：每次請求獨立執行，無法記憶使用者上次搜尋內容
+
+---
+
+## 2026-03-19 重要修正紀錄（Production）
+
+### 1) 「網頁瀏覽全部報價」改為 Zeabur 端動態頁（已上線）
+
+- 先前使用 JSONHero 連結，手機端體驗不佳且非專案內頁面
+- 已改為 n8n 內建 webhook 回傳 HTML：
+  - `GET /webhook/quotation-view?t=<token>`
+- 連結由搜尋流程動態產生，顯示在每張搜尋結果卡片按鈕：
+  - `網頁瀏覽全部報價(15分)`
+
+### 2) 15 分鐘有效期（已上線）
+
+- `Search & Build Flex` 會建立一次性 token 並寫入 workflow static data：`viewerTokens`
+- token 內容：`mode`、`keyword`、`expiresAt`
+- TTL：15 分鐘
+- `Build Viewer HTML` 會清除過期 token，並在 token 無效/過期時回傳提示頁：
+  - `連結已過期：此連結僅有效 15 分鐘，請回 LINE 重新點選`
+
+### 3) 搜尋與顯示規則（已上線）
+
+- 支援「按鈕選模式後直接輸入關鍵字」：
+  - 例：先按 `搜尋廠商`，再輸入 `新三和`（不必再打 `廠商:新三和`）
+- 相容舊格式：`加工類型:關鍵字`、`廠商:關鍵字`、`品名:關鍵字`
+- 支援分頁尾碼：`第2頁` 或 `2頁`
+- 排序：依 `時間戳記` 新到舊
+- 顯示上限：最多處理 100 筆（避免 Flex/carousel 過大）
+- 每頁顯示：8 筆（含上一頁/下一頁按鈕）
+- 搜尋結果卡片按鈕：
+  1. `網頁瀏覽全部報價(15分)`（藍）
+  2. `查看原圖`（綠；無圖則改 `查看原始資料` 橘）
+  3. `回到主畫面`（灰）
+
+### 4) n8n 節點擴充（8 -> 12）
+
+新增節點：
+- Node 9: `Viewer Webhook`（GET `quotation-view`, responseNode）
+- Node 10: `Read Quotations JSON (Viewer)`
+- Node 11: `Build Viewer HTML`
+- Node 12: `Respond Viewer`（`Content-Type: text/html; charset=utf-8`）
+
+### 5) Zeabur webhook 啟用注意事項（關鍵）
+
+- 在目前環境，僅用 API `activate/deactivate` 後，production webhook 可能仍顯示未註冊（404）
+- 發布/更新 workflow 後，需到 n8n UI 手動切換一次 Active（OFF -> ON）以完成 webhook 註冊
+- 驗證端點：
+  - `POST /webhook/line-quotation`
+  - `GET /webhook/quotation-view`

@@ -172,6 +172,36 @@ crontab -e
 
 ---
 
+### 6. recycle_workflow_webhook.sh
+**用途**：自動切換 workflow Active（deactivate -> activate）並驗證 webhook 註冊
+
+**功能**：
+- 呼叫 n8n API 關閉再啟用指定 workflow
+- 自動 probe `N8N_WEBHOOK_PATH`，檢查是否從 404 恢復
+- 若仍失敗，明確提示需要手動在 UI 切換 Active
+
+**使用方式**：
+```bash
+cd /Users/alston/Documents/AntiGravity/rd_quotation_search
+./scripts/recycle_workflow_webhook.sh Hr7UCyvl4DLJrQnc
+```
+
+**可選參數**：
+- `ATTEMPTS`（預設 3）
+- `SLEEP_SECONDS`（預設 2）
+- `ENV_FILE`（預設 `../.env.local`）
+
+**範例**：
+```bash
+ATTEMPTS=5 SLEEP_SECONDS=3 ./scripts/recycle_workflow_webhook.sh Hr7UCyvl4DLJrQnc
+```
+
+**注意事項**：
+- 本腳本會直接讀取 `.env.local`，不需要 `source .env.local`
+- 若平台限制導致 API 切換無效（常見於部分託管環境），仍需手動在 n8n UI 切換 Active
+
+---
+
 ## 🔧 環境變數設定
 
 部分腳本需要環境變數（存放於 `.env.local`，不提交到 Git）：
