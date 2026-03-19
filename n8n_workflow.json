@@ -12,22 +12,40 @@
       "name": "LINE Webhook",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 1.1,
-      "position": [240, 380]
+      "position": [
+        240,
+        380
+      ]
     },
     {
       "parameters": {
-        "jsCode": "// 解析 LINE Event 並判斷是「選模式」還是「直接搜尋」\nconst input = $input.first().json;\n// n8n webhook 將 POST body 放在 .body 下，但也可能直接是 input 本身\nconst body = input.body || input;\nconst event = body.events?.[0];\n\nif (!event || event.type !== 'message' || event.message.type !== 'text') {\n  return [];\n}\n\nconst userId = event.source.userId;\nconst replyToken = event.replyToken;\nconst text = event.message.text.trim();\n\n// 判斷是「模式選擇」或「直接搜尋」\nconst modeButtons = ['品名搜尋', '廠商搜尋', '加工類型搜尋'];\n\nif (modeButtons.includes(text)) {\n  // 回覆提示\n  const modeMap = { '品名搜尋': '品名', '廠商搜尋': '廠商', '加工類型搜尋': '加工類型' };\n  return [{\n    json: {\n      action: 'prompt',\n      replyToken,\n      searchMode: modeMap[text]\n    }\n  }];\n}\n\n// 檢查是否為「模式:關鍵字」格式\nconst match = text.match(/^(品名|廠商|加工類型)[:：\\s]+(.+)$/i);\nif (match) {\n  return [{\n    json: {\n      action: 'search',\n      replyToken,\n      userId,\n      searchMode: match[1],\n      keyword: match[2].trim()\n    }\n  }];\n}\n\n// 預設顯示說明\nreturn [{\n  json: {\n    action: 'help',\n    replyToken\n  }\n}];"
+        "jsCode": "// 解析 LINE 訊息並判斷路由\nconst input = $input.first().json;\nconst body = input.body || input;\nconst event = body.events?.[0];\n\nif (!event || event.type !== 'message' || event.message.type !== 'text') {\n  return [];\n}\n\nconst replyToken = event.replyToken;\nconst userId = event.source?.userId;\nconst text = event.message.text.trim();\n\n// 按鈕點選：模式選擇\nif (text === '搜尋加工類型' || text === '搜尋廠商') {\n  const modeMap = { '搜尋加工類型': '加工類型', '搜尋廠商': '廠商' };\n  return [{\n    json: {\n      action: 'prompt',\n      replyToken,\n      searchMode: modeMap[text]\n    }\n  }];\n}\n\n// 搜尋指令（格式：加工類型:關鍵字 或 廠商:關鍵字）\nconst match = text.match(/^(加工類型|廠商)[:：\\s]+(.+)$/);\nif (match) {\n  return [{\n    json: {\n      action: 'search',\n      replyToken,\n      userId,\n      searchMode: match[1],\n      keyword: match[2].trim()\n    }\n  }];\n}\n\n// 預設：顯示主目錄\nreturn [{\n  json: {\n    action: 'menu',\n    replyToken\n  }\n}];"
       },
       "id": "code-parse",
       "name": "Parse & Route",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [440, 380]
+      "position": [
+        440,
+        380
+      ]
     },
     {
       "parameters": {
         "rules": {
           "values": [
+            {
+              "conditions": {
+                "string": [
+                  {
+                    "value1": "={{ $json.action }}",
+                    "value2": "menu"
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "主目錄"
+            },
             {
               "conditions": {
                 "string": [
@@ -51,18 +69,6 @@
               },
               "renameOutput": true,
               "outputKey": "搜尋"
-            },
-            {
-              "conditions": {
-                "string": [
-                  {
-                    "value1": "={{ $json.action }}",
-                    "value2": "help"
-                  }
-                ]
-              },
-              "renameOutput": true,
-              "outputKey": "說明"
             }
           ]
         },
@@ -72,7 +78,10 @@
       "name": "Switch Action",
       "type": "n8n-nodes-base.switch",
       "typeVersion": 3,
-      "position": [640, 380]
+      "position": [
+        640,
+        380
+      ]
     },
     {
       "parameters": {
@@ -89,38 +98,44 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"replyToken\": \"{{ $json.replyToken }}\",\n  \"messages\": [{\n    \"type\": \"text\",\n    \"text\": \"請輸入格式：{{ $json.searchMode }}:關鍵字\\n\\n範例：\\n品名:棘輪\\n廠商:亮新\\n加工類型:表面處理\"\n  }]\n}",
+        "jsonBody": "={{\n  return JSON.stringify({\n    replyToken: $json.replyToken,\n    messages: [{\n      type: 'flex',\n      altText: '首君報價查詢系統',\n      contents: {\n        type: 'bubble',\n        size: 'mega',\n        header: {\n          type: 'box', layout: 'vertical',\n          contents: [{\n            type: 'text', text: '📋 首君報價查詢系統',\n            weight: 'bold', size: 'xl', color: '#ffffff', align: 'center'\n          }],\n          backgroundColor: '#1DB446', paddingAll: '20px'\n        },\n        body: {\n          type: 'box', layout: 'vertical',\n          contents: [{\n            type: 'text', text: '請選擇查詢方式',\n            size: 'md', align: 'center', color: '#666666'\n          }],\n          paddingAll: '20px'\n        },\n        footer: {\n          type: 'box', layout: 'vertical', spacing: 'md',\n          contents: [\n            {\n              type: 'button', style: 'primary', height: 'md',\n              action: { type: 'message', label: '🔍 搜尋加工類型', text: '搜尋加工類型' },\n              color: '#1DB446'\n            },\n            {\n              type: 'button', style: 'primary', height: 'md',\n              action: { type: 'message', label: '🏭 搜尋廠商', text: '搜尋廠商' },\n              color: '#1976D2'\n            }\n          ],\n          paddingAll: '20px'\n        }\n      }\n    }]\n  });\n}}",
+        "options": {}
+      },
+      "id": "http-reply-menu",
+      "name": "Reply Menu",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        840,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.line.me/v2/bot/message/reply",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer 0O5969QUfQUA0k01anwNsrSw55ENuAZ/Gcb8QVe0LGtMDHovXEJYo6Gmo/p/Fhyqy0QpFKBkz6uXInrhbf9bHi8CXkMeOsizpmMerMj3cVfKIO8cReXFHM15mxAgKtd9s8gexKlgaaiO96eIfsb9egdB04t89/1O/w1cDnyilFU="
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{\n  const mode = $json.searchMode;\n  const example = mode === '加工類型' ? '加工類型:表面處理' : '廠商:新三和';\n  return JSON.stringify({\n    replyToken: $json.replyToken,\n    messages: [{\n      type: 'text',\n      text: '請輸入' + mode + '關鍵字\\n\\n格式：' + mode + ':關鍵字\\n範例：' + example\n    }]\n  });\n}}",
         "options": {}
       },
       "id": "http-reply-prompt",
       "name": "Reply Prompt",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [840, 220]
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "https://api.line.me/v2/bot/message/reply",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Authorization",
-              "value": "=Bearer 0O5969QUfQUA0k01anwNsrSw55ENuAZ/Gcb8QVe0LGtMDHovXEJYo6Gmo/p/Fhyqy0QpFKBkz6uXInrhbf9bHi8CXkMeOsizpmMerMj3cVfKIO8cReXFHM15mxAgKtd9s8gexKlgaaiO96eIfsb9egdB04t89/1O/w1cDnyilFU="
-            }
-          ]
-        },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={\n  \"replyToken\": \"{{ $json.replyToken }}\",\n  \"messages\": [{\n    \"type\": \"text\",\n    \"text\": \"👋 首君報價查詢系統\\n\\n請點選搜尋方式，或直接輸入：\\n品名:關鍵字\\n廠商:關鍵字\\n加工類型:關鍵字\",\n    \"quickReply\": {\n      \"items\": [\n        { \"type\": \"action\", \"action\": { \"type\": \"message\", \"label\": \"🔍 品名搜尋\", \"text\": \"品名搜尋\" }},\n        { \"type\": \"action\", \"action\": { \"type\": \"message\", \"label\": \"🏭 廠商搜尋\", \"text\": \"廠商搜尋\" }},\n        { \"type\": \"action\", \"action\": { \"type\": \"message\", \"label\": \"⚙️ 加工類型搜尋\", \"text\": \"加工類型搜尋\" }}\n      ]\n    }\n  }]\n}",
-        "options": {}
-      },
-      "id": "http-reply-help",
-      "name": "Reply Help",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [840, 540]
+      "position": [
+        840,
+        380
+      ]
     },
     {
       "parameters": {
@@ -131,17 +146,23 @@
       "name": "Read Quotations JSON",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [840, 380]
+      "position": [
+        840,
+        560
+      ]
     },
     {
       "parameters": {
-        "jsCode": "// 搜尋與建立 Flex Message\nconst { searchMode, keyword, replyToken } = $input.first().json;\nconst jsonResponse = $('Read Quotations JSON').first().json;\n\n// 取得資料陣列\nconst rows = jsonResponse.data || [];\n\n// 搜尋邏輯\nconst fieldMap = { '品名': '品名', '廠商': '廠商', '加工類型': '加工類型' };\nconst field = fieldMap[searchMode] || '品名';\nconst keyLower = keyword.toLowerCase();\n\nconst results = rows\n  .filter(row => row[field] && row[field].toLowerCase().includes(keyLower))\n  .sort((a, b) => new Date(b['時間戳記']) - new Date(a['時間戳記']))\n  .slice(0, 10);\n\nconst total = rows.filter(row => row[field] && row[field].toLowerCase().includes(keyLower)).length;\n\nif (!results.length) {\n  return [{\n    json: {\n      replyToken,\n      messageType: 'text',\n      text: `「${keyword}」查無相關報價資料 😕\\n\\n請重新搜尋或點選按鈕：`,\n      hasQuickReply: true\n    }\n  }];\n}\n\n// 建立 Flex Message Bubbles\nconst bubbles = results.map(row => {\n  const driveUrl = (row['拍照報價單'] || '').split(',')[0].trim();\n  const dateStr = (row['時間戳記'] || '').substring(0, 10);\n  const hasNote = row['備註'] && row['備註'].trim();\n  const hasDrive = driveUrl.startsWith('http');\n\n  const bodyContents = [\n    { type: 'text', text: row['品名'] || '(無品名)', weight: 'bold', size: 'md', wrap: true },\n    { type: 'separator', margin: 'sm' },\n    {\n      type: 'box', layout: 'vertical', spacing: 'xs', margin: 'sm',\n      contents: [\n        {\n          type: 'box', layout: 'baseline',\n          contents: [\n            { type: 'text', text: '加工', size: 'sm', color: '#888888', flex: 2 },\n            { type: 'text', text: row['加工類型'] || '-', size: 'sm', flex: 5, wrap: true }\n          ]\n        },\n        {\n          type: 'box', layout: 'baseline',\n          contents: [\n            { type: 'text', text: '廠商', size: 'sm', color: '#888888', flex: 2 },\n            { type: 'text', text: row['廠商'] || '-', size: 'sm', flex: 5, wrap: true }\n          ]\n        },\n        {\n          type: 'box', layout: 'baseline',\n          contents: [\n            { type: 'text', text: '填表人', size: 'sm', color: '#888888', flex: 2 },\n            { type: 'text', text: row['填表人'] || '-', size: 'sm', flex: 5 }\n          ]\n        },\n        {\n          type: 'box', layout: 'baseline',\n          contents: [\n            { type: 'text', text: '日期', size: 'sm', color: '#888888', flex: 2 },\n            { type: 'text', text: dateStr, size: 'sm', flex: 5 }\n          ]\n        }\n      ]\n    }\n  ];\n\n  if (hasNote) {\n    const noteText = row['備註'].length > 60 ? row['備註'].substring(0, 60) + '…' : row['備註'];\n    bodyContents.push({ type: 'separator', margin: 'sm' });\n    bodyContents.push({ type: 'text', text: noteText, size: 'xs', color: '#666666', wrap: true, margin: 'sm' });\n  }\n\n  const footerContents = hasDrive ? [{\n    type: 'button', style: 'primary', height: 'sm',\n    action: { type: 'uri', label: '查看報價單 →', uri: driveUrl }\n  }] : [{\n    type: 'text', text: '（無報價單連結）', size: 'xs', color: '#aaaaaa', align: 'center'\n  }];\n\n  return {\n    type: 'bubble', size: 'kilo',\n    header: {\n      type: 'box', layout: 'vertical', backgroundColor: '#1DB446', paddingAll: 'sm',\n      contents: [{ type: 'text', text: searchMode + '：' + keyword, color: '#ffffff', size: 'xs' }]\n    },\n    body: { type: 'box', layout: 'vertical', contents: bodyContents },\n    footer: { type: 'box', layout: 'vertical', contents: footerContents }\n  };\n});\n\nif (total > 10) {\n  bubbles.push({\n    type: 'bubble', size: 'nano',\n    body: {\n      type: 'box', layout: 'vertical', justifyContent: 'center',\n      contents: [{\n        type: 'text', text: `共 ${total} 筆結果\\n顯示最新 10 筆`,\n        align: 'center', size: 'sm', color: '#888888', wrap: true\n      }]\n    }\n  });\n}\n\nreturn [{\n  json: {\n    replyToken,\n    messageType: 'flex',\n    flexContents: { type: 'carousel', contents: bubbles },\n    altText: `「${keyword}」共 ${total} 筆報價資料`,\n    hasQuickReply: true\n  }\n}];"
+        "jsCode": "// 搜尋資料並建立 Flex Message\nconst { searchMode, keyword, replyToken } = $input.first().json;\nconst jsonResponse = $('Read Quotations JSON').first().json;\nconst rows = jsonResponse.data || [];\n\nconst field = searchMode;\nconst keyLower = keyword.toLowerCase();\n\nconst matched = rows.filter(row => row[field] && row[field].toLowerCase().includes(keyLower));\nconst total = matched.length;\nconst results = matched\n  .sort((a, b) => new Date(b['時間戳記']) - new Date(a['時間戳記']))\n  .slice(0, 10);\n\nif (!results.length) {\n  return [{\n    json: {\n      replyToken,\n      messageType: 'text',\n      text: '查無「' + keyword + '」相關報價資料\\n\\n請重新輸入：' + searchMode + ':關鍵字'\n    }\n  }];\n}\n\nconst bubbles = results.map(row => {\n  const driveUrl = (row['拍照報價單'] || '').split(',')[0].trim();\n  const dateStr = (row['時間戳記'] || '').substring(0, 10);\n  const hasNote = row['備註'] && row['備註'].trim();\n  const hasDrive = driveUrl.startsWith('http');\n\n  const bodyContents = [\n    { type: 'text', text: row['品名'] || '(無品名)', weight: 'bold', size: 'md', wrap: true },\n    { type: 'separator', margin: 'sm' },\n    {\n      type: 'box', layout: 'vertical', spacing: 'xs', margin: 'sm',\n      contents: [\n        {\n          type: 'box', layout: 'baseline',\n          contents: [\n            { type: 'text', text: '加工', size: 'sm', color: '#888888', flex: 2 },\n            { type: 'text', text: row['加工類型'] || '-', size: 'sm', flex: 5, wrap: true }\n          ]\n        },\n        {\n          type: 'box', layout: 'baseline',\n          contents: [\n            { type: 'text', text: '廠商', size: 'sm', color: '#888888', flex: 2 },\n            { type: 'text', text: row['廠商'] || '-', size: 'sm', flex: 5, wrap: true }\n          ]\n        },\n        {\n          type: 'box', layout: 'baseline',\n          contents: [\n            { type: 'text', text: '填表人', size: 'sm', color: '#888888', flex: 2 },\n            { type: 'text', text: row['填表人'] || '-', size: 'sm', flex: 5 }\n          ]\n        },\n        {\n          type: 'box', layout: 'baseline',\n          contents: [\n            { type: 'text', text: '日期', size: 'sm', color: '#888888', flex: 2 },\n            { type: 'text', text: dateStr, size: 'sm', flex: 5 }\n          ]\n        }\n      ]\n    }\n  ];\n\n  if (hasNote) {\n    const noteText = row['備註'].length > 60 ? row['備註'].substring(0, 60) + '…' : row['備註'];\n    bodyContents.push({ type: 'separator', margin: 'sm' });\n    bodyContents.push({ type: 'text', text: noteText, size: 'xs', color: '#666666', wrap: true, margin: 'sm' });\n  }\n\n  const footerContents = hasDrive ? [{\n    type: 'button', style: 'primary', height: 'sm',\n    action: { type: 'uri', label: '查看報價單', uri: driveUrl }\n  }] : [{\n    type: 'text', text: '（無報價單連結）', size: 'xs', color: '#aaaaaa', align: 'center'\n  }];\n\n  return {\n    type: 'bubble', size: 'kilo',\n    header: {\n      type: 'box', layout: 'vertical', backgroundColor: '#1DB446', paddingAll: 'sm',\n      contents: [{ type: 'text', text: searchMode + '：' + keyword, color: '#ffffff', size: 'xs' }]\n    },\n    body: { type: 'box', layout: 'vertical', contents: bodyContents },\n    footer: { type: 'box', layout: 'vertical', contents: footerContents }\n  };\n});\n\nif (total > 10) {\n  bubbles.push({\n    type: 'bubble', size: 'nano',\n    body: {\n      type: 'box', layout: 'vertical', justifyContent: 'center',\n      contents: [{\n        type: 'text', text: '共 ' + total + ' 筆結果\\n顯示最新 10 筆',\n        align: 'center', size: 'sm', color: '#888888', wrap: true\n      }]\n    }\n  });\n}\n\nreturn [{\n  json: {\n    replyToken,\n    messageType: 'flex',\n    flexContents: { type: 'carousel', contents: bubbles },\n    altText: '「' + keyword + '」共 ' + total + ' 筆報價資料'\n  }\n}];"
       },
       "id": "code-search",
       "name": "Search & Build Flex",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1040, 380]
+      "position": [
+        1040,
+        560
+      ]
     },
     {
       "parameters": {
@@ -158,35 +179,88 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ \n  const msg = $json.messageType === 'flex' \n    ? { type: 'flex', altText: $json.altText, contents: $json.flexContents }\n    : { type: 'text', text: $json.text };\n    \n  const quickReply = $json.hasQuickReply ? {\n    items: [\n      { type: 'action', action: { type: 'message', label: '🔍 品名搜尋', text: '品名搜尋' }},\n      { type: 'action', action: { type: 'message', label: '🏭 廠商搜尋', text: '廠商搜尋' }},\n      { type: 'action', action: { type: 'message', label: '⚙️ 加工類型搜尋', text: '加工類型搜尋' }}\n    ]\n  } : undefined;\n  \n  if (quickReply) msg.quickReply = quickReply;\n  \n  return JSON.stringify({\n    replyToken: $json.replyToken,\n    messages: [msg]\n  });\n}}",
+        "jsonBody": "={{\n  const msg = $json.messageType === 'flex'\n    ? { type: 'flex', altText: $json.altText, contents: $json.flexContents }\n    : { type: 'text', text: $json.text };\n\n  return JSON.stringify({\n    replyToken: $json.replyToken,\n    messages: [msg]\n  });\n}}",
         "options": {}
       },
       "id": "http-reply-result",
       "name": "Reply Result",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1240, 380]
+      "position": [
+        1240,
+        560
+      ]
     }
   ],
   "connections": {
     "LINE Webhook": {
-      "main": [[{ "node": "Parse & Route", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Parse & Route",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Parse & Route": {
-      "main": [[{ "node": "Switch Action", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Switch Action",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Switch Action": {
       "main": [
-        [{ "node": "Reply Prompt", "type": "main", "index": 0 }],
-        [{ "node": "Read Quotations JSON", "type": "main", "index": 0 }],
-        [{ "node": "Reply Help", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Reply Menu",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Reply Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Read Quotations JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
     "Read Quotations JSON": {
-      "main": [[{ "node": "Search & Build Flex", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Search & Build Flex",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
     "Search & Build Flex": {
-      "main": [[{ "node": "Reply Result", "type": "main", "index": 0 }]]
+      "main": [
+        [
+          {
+            "node": "Reply Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "settings": {

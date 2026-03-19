@@ -10,8 +10,8 @@
 - **部署環境**：n8n self-hosted (`https://alstonn8n2026.zeabur.app`)
 - **資料來源**：GitHub 託管 JSON 資料庫（`quotations.json`，由同步流程定時更新）
 - **資料筆數**：490 筆（最後更新：2026-03-19）
-- **Workflow ID**：`WUI9OBlNcbvalbs8`（已啟用）
-- **前端**：LINE Messaging API（指令格式 + Flex Message）
+- **Workflow ID**：`Hr7UCyvl4DLJrQnc`（需手動在 UI 啟用 webhook）
+- **前端**：LINE Messaging API（主目錄 Flex Message + 指令搜尋）
 - **設計特色**：Stateless（無 session 管理）
 
 ---
@@ -40,9 +40,9 @@
 
 ---
 
-## n8n Workflow 架構
+## n8n Workflow 架構（v2）
 
-此 workflow 採用 **stateless 設計**，完全透過指令格式（如 `品名:棘輪`）進行搜尋，無需 Google 寫入權限。
+此 workflow 採用 **stateless 設計**，使用者輸入任意文字顯示主目錄，透過按鈕選擇搜尋模式後輸入關鍵字。
 
 ### 流程圖
 
@@ -51,12 +51,22 @@ LINE User Message
   ↓
 [1] LINE Webhook (接收訊息)
   ↓
-[2] Parse & Route (判斷指令類型)
+[2] Parse & Route (判斷：主目錄/提示/搜尋)
   ↓
 [3] Switch (3-way routing)
-  ├→ 提示：[4] Reply Prompt (教學如何使用)
-  ├→ 搜尋：[6] Read Quotations JSON → [7] Search & Build Flex → [8] Reply Result
-  └→ 說明：[5] Reply Help (Quick Reply buttons)
+  ├→ 主目錄：[4] Reply Menu (Flex Message，兩個按鈕)
+  ├→ 提示：  [5] Reply Prompt (告知輸入格式)
+  └→ 搜尋：  [6] Read Quotations JSON → [7] Search & Build Flex → [8] Reply Result
+```
+
+### 使用者互動流程
+
+```
+使用者輸入任意文字 → 主目錄 Flex（兩按鈕：搜尋加工類型 / 搜尋廠商）
+  → 點選「搜尋加工類型」→ 提示「請輸入加工類型:關鍵字」
+    → 輸入「加工類型:表面處理」→ 搜尋結果 Flex Carousel
+  → 點選「搜尋廠商」→ 提示「請輸入廠商:關鍵字」
+    → 輸入「廠商:新三和」→ 搜尋結果 Flex Carousel
 ```
 
 ---
@@ -73,63 +83,45 @@ LINE User Message
 
 ### Node 2 | Parse & Route (Code JS)
 
-解析 LINE 訊息，判斷為「按鈕選擇」、「指令搜尋」或「需要說明」。
+解析 LINE 訊息，判斷為「模式選擇按鈕」、「搜尋指令」或「其他（顯示主目錄）」。
 
 ```javascript
-// 解析 LINE Event 並判斷是「選模式」還是「直接搜尋」
-const body = $input.first().json.body;
+const input = $input.first().json;
+const body = input.body || input;
 const event = body.events?.[0];
 
 if (!event || event.type !== 'message' || event.message.type !== 'text') {
   return [];
 }
 
-const userId = event.source.userId;
 const replyToken = event.replyToken;
+const userId = event.source?.userId;
 const text = event.message.text.trim();
 
-// 判斷是「模式選擇」或「直接搜尋」
-const modeButtons = ['品名搜尋', '廠商搜尋', '加工類型搜尋'];
-
-if (modeButtons.includes(text)) {
-  // 回覆提示
-  const modeMap = { '品名搜尋': '品名', '廠商搜尋': '廠商', '加工類型搜尋': '加工類型' };
+// 按鈕點選：模式選擇
+if (text === '搜尋加工類型' || text === '搜尋廠商') {
+  const modeMap = { '搜尋加工類型': '加工類型', '搜尋廠商': '廠商' };
   return [{
-    json: {
-      action: 'prompt',
-      replyToken,
-      searchMode: modeMap[text]
-    }
+    json: { action: 'prompt', replyToken, searchMode: modeMap[text] }
   }];
 }
 
-// 檢查是否為「模式:關鍵字」格式
-const match = text.match(/^(品名|廠商|加工類型)[:：\s]+(.+)$/i);
+// 搜尋指令（格式：加工類型:關鍵字 或 廠商:關鍵字）
+const match = text.match(/^(加工類型|廠商)[:：\s]+(.+)$/);
 if (match) {
   return [{
-    json: {
-      action: 'search',
-      replyToken,
-      userId,
-      searchMode: match[1],
-      keyword: match[2].trim()
-    }
+    json: { action: 'search', replyToken, userId, searchMode: match[1], keyword: match[2].trim() }
   }];
 }
 
-// 預設顯示說明
-return [{
-  json: {
-    action: 'help',
-    replyToken
-  }
-}];
+// 預設：顯示主目錄
+return [{ json: { action: 'menu', replyToken } }];
 ```
 
 **Outputs**:
-- `action === 'prompt'` → Node 4 (Reply Prompt)
+- `action === 'menu'` → Node 4 (Reply Menu)
+- `action === 'prompt'` → Node 5 (Reply Prompt)
 - `action === 'search'` → Node 6 (Read Quotations JSON)
-- `action === 'help'` → Node 5 (Reply Help)
 
 ---
 
@@ -137,58 +129,36 @@ return [{
 
 - **類型**: `n8n-nodes-base.switch`
 - **條件**:
-  1. `{{ $json.action }} === 'prompt'` → 提示
-  2. `{{ $json.action }} === 'search'` → 搜尋
-  3. `{{ $json.action }} === 'help'` → 說明
+  1. `{{ $json.action }} === 'menu'` → 主目錄
+  2. `{{ $json.action }} === 'prompt'` → 提示
+  3. `{{ $json.action }} === 'search'` → 搜尋
 
 ---
 
-### Node 4 | Reply Prompt (HTTP Request)
+### Node 4 | Reply Menu (HTTP Request)
 
-教學使用者如何輸入指令格式。
+回傳主目錄 Flex Message，含兩個按鈕。
 
 - **Method**: POST
 - **URL**: `https://api.line.me/v2/bot/message/reply`
-- **Headers**:
-  - `Authorization`: `Bearer {{ $env.LINE_CHANNEL_ACCESS_TOKEN }}`
-- **Body** (JSON):
-```json
-{
-  "replyToken": "{{ $json.replyToken }}",
-  "messages": [{
-    "type": "text",
-    "text": "請輸入格式：{{ $json.searchMode }}:關鍵字\n\n範例：\n品名:棘輪\n廠商:亮新\n加工類型:表面處理"
-  }]
-}
-```
+- **Body**: Flex Message bubble，包含：
+  - Header：`📋 首君報價查詢系統`（綠色背景）
+  - Body：`請選擇查詢方式`
+  - Footer：兩個按鈕
+    - `🔍 搜尋加工類型`（綠色，送出 `搜尋加工類型`）
+    - `🏭 搜尋廠商`（藍色，送出 `搜尋廠商`）
 
 ---
 
-### Node 5 | Reply Help (HTTP Request)
+### Node 5 | Reply Prompt (HTTP Request)
 
-顯示使用說明 + Quick Reply 按鈕。
+提示使用者輸入搜尋關鍵字。
 
 - **Method**: POST
 - **URL**: `https://api.line.me/v2/bot/message/reply`
-- **Headers**:
-  - `Authorization`: `Bearer {{ $env.LINE_CHANNEL_ACCESS_TOKEN }}`
-- **Body** (JSON):
-```json
-{
-  "replyToken": "{{ $json.replyToken }}",
-  "messages": [{
-    "type": "text",
-    "text": "👋 首君報價查詢系統\n\n請點選搜尋方式，或直接輸入：\n品名:關鍵字\n廠商:關鍵字\n加工類型:關鍵字",
-    "quickReply": {
-      "items": [
-        { "type": "action", "action": { "type": "message", "label": "🔍 品名搜尋", "text": "品名搜尋" }},
-        { "type": "action", "action": { "type": "message", "label": "🏭 廠商搜尋", "text": "廠商搜尋" }},
-        { "type": "action", "action": { "type": "message", "label": "⚙️ 加工類型搜尋", "text": "加工類型搜尋" }}
-      ]
-    }
-  }]
-}
-```
+- **Body**: 動態文字訊息
+  - 加工類型模式：`請輸入加工類型關鍵字\n\n格式：加工類型:關鍵字\n範例：加工類型:表面處理`
+  - 廠商模式：`請輸入廠商關鍵字\n\n格式：廠商:關鍵字\n範例：廠商:新三和`
 
 ---
 
@@ -199,171 +169,28 @@ return [{
 - **Method**: GET
 - **URL**: `https://raw.githubusercontent.com/alstonhsiao/rd_quotation_search/main/quotations.json`
 
-**Output**: JSON 物件（含 `lastUpdated`, `totalRecords`, `data`）
-
 ---
 
 ### Node 7 | Search & Build Flex (Code JS)
 
-解析 JSON、執行搜尋、建立 Flex Message Carousel。
+搜尋資料並建立 Flex Message Carousel。
 
-```javascript
-// 搜尋與建立 Flex Message
-const { searchMode, keyword, replyToken } = $input.first().json;
-const jsonResponse = $('Read Quotations JSON').first().json;
-
-// 取得資料陣列
-const rows = jsonResponse.data || [];
-
-// 搜尋邏輯
-const fieldMap = { '品名': '品名', '廠商': '廠商', '加工類型': '加工類型' };
-const field = fieldMap[searchMode] || '品名';
-const keyLower = keyword.toLowerCase();
-
-const results = rows
-  .filter(row => row[field] && row[field].toLowerCase().includes(keyLower))
-  .sort((a, b) => new Date(b['時間戳記']) - new Date(a['時間戳記']))
-  .slice(0, 10);
-
-const total = rows.filter(row => row[field] && row[field].toLowerCase().includes(keyLower)).length;
-
-if (!results.length) {
-  return [{
-    json: {
-      replyToken,
-      messageType: 'text',
-      text: `「${keyword}」查無相關報價資料 😕\n\n請重新搜尋或點選按鈕：`,
-      hasQuickReply: true
-    }
-  }];
-}
-
-// 建立 Flex Message Bubbles
-const bubbles = results.map(row => {
-  const driveUrl = (row['拍照報價單'] || '').split(',')[0].trim();
-  const dateStr = (row['時間戳記'] || '').substring(0, 10);
-  const hasNote = row['備註'] && row['備註'].trim();
-  const hasDrive = driveUrl.startsWith('http');
-
-  const bodyContents = [
-    { type: 'text', text: row['品名'] || '(無品名)', weight: 'bold', size: 'md', wrap: true },
-    { type: 'separator', margin: 'sm' },
-    {
-      type: 'box', layout: 'vertical', spacing: 'xs', margin: 'sm',
-      contents: [
-        {
-          type: 'box', layout: 'baseline',
-          contents: [
-            { type: 'text', text: '加工', size: 'sm', color: '#888888', flex: 2 },
-            { type: 'text', text: row['加工類型'] || '-', size: 'sm', flex: 5, wrap: true }
-          ]
-        },
-        {
-          type: 'box', layout: 'baseline',
-          contents: [
-            { type: 'text', text: '廠商', size: 'sm', color: '#888888', flex: 2 },
-            { type: 'text', text: row['廠商'] || '-', size: 'sm', flex: 5, wrap: true }
-          ]
-        },
-        {
-          type: 'box', layout: 'baseline',
-          contents: [
-            { type: 'text', text: '填表人', size: 'sm', color: '#888888', flex: 2 },
-            { type: 'text', text: row['填表人'] || '-', size: 'sm', flex: 5 }
-          ]
-        },
-        {
-          type: 'box', layout: 'baseline',
-          contents: [
-            { type: 'text', text: '日期', size: 'sm', color: '#888888', flex: 2 },
-            { type: 'text', text: dateStr, size: 'sm', flex: 5 }
-          ]
-        }
-      ]
-    }
-  ];
-
-  if (hasNote) {
-    const noteText = row['備註'].length > 60 ? row['備註'].substring(0, 60) + '…' : row['備註'];
-    bodyContents.push({ type: 'separator', margin: 'sm' });
-    bodyContents.push({ type: 'text', text: noteText, size: 'xs', color: '#666666', wrap: true, margin: 'sm' });
-  }
-
-  const footerContents = hasDrive ? [{
-    type: 'button', style: 'primary', height: 'sm',
-    action: { type: 'uri', label: '查看報價單 →', uri: driveUrl }
-  }] : [{
-    type: 'text', text: '（無報價單連結）', size: 'xs', color: '#aaaaaa', align: 'center'
-  }];
-
-  return {
-    type: 'bubble', size: 'kilo',
-    header: {
-      type: 'box', layout: 'vertical', backgroundColor: '#1DB446', paddingAll: 'sm',
-      contents: [{ type: 'text', text: searchMode + '：' + keyword, color: '#ffffff', size: 'xs' }]
-    },
-    body: { type: 'box', layout: 'vertical', contents: bodyContents },
-    footer: { type: 'box', layout: 'vertical', contents: footerContents }
-  };
-});
-
-if (total > 10) {
-  bubbles.push({
-    type: 'bubble', size: 'nano',
-    body: {
-      type: 'box', layout: 'vertical', justifyContent: 'center',
-      contents: [{
-        type: 'text', text: `共 ${total} 筆結果\n顯示最新 10 筆`,
-        align: 'center', size: 'sm', color: '#888888', wrap: true
-      }]
-    }
-  });
-}
-
-return [{
-  json: {
-    replyToken,
-    messageType: 'flex',
-    flexContents: { type: 'carousel', contents: bubbles },
-    altText: `「${keyword}」共 ${total} 筆報價資料`,
-    hasQuickReply: true
-  }
-}];
-```
+- **搜尋欄位**：`加工類型` 或 `廠商`（由 searchMode 決定）
+- **搜尋方式**：`toLowerCase().includes()` 模糊比對
+- **排序**：依時間戳記由新到舊
+- **限制**：最多顯示 10 筆
+- **無結果**：回傳文字訊息提示重新輸入
+- **每張卡片**：品名、加工類型、廠商、填表人、日期、備註、報價單連結按鈕
 
 ---
 
 ### Node 8 | Reply Result (HTTP Request)
 
-回傳搜尋結果（Flex Message 或 Text）+ Quick Reply。
+回傳搜尋結果（Flex Message Carousel 或 Text）。
 
 - **Method**: POST
 - **URL**: `https://api.line.me/v2/bot/message/reply`
-- **Headers**:
-  - `Authorization`: `Bearer {{ $env.LINE_CHANNEL_ACCESS_TOKEN }}`
-- **Body** (JS Expression):
-```javascript
-{{ 
-  const msg = $json.messageType === 'flex' 
-    ? { type: 'flex', altText: $json.altText, contents: $json.flexContents }
-    : { type: 'text', text: $json.text };
-    
-  const quickReply = $json.hasQuickReply ? {
-    items: [
-      { type: 'action', action: { type: 'message', label: '🔍 品名搜尋', text: '品名搜尋' }},
-      { type: 'action', action: { type: 'message', label: '🏭 廠商搜尋', text: '廠商搜尋' }},
-      { type: 'action', action: { type: 'message', label: '⚙️ 加工類型搜尋', text: '加工類型搜尋' }}
-    ]
-  } : undefined;
-  
-  if (quickReply) msg.quickReply = quickReply;
-  
-  return JSON.stringify({
-    replyToken: $json.replyToken,
-    messages: [msg]
-  });
-}}
-```
+- **Body**: 動態判斷 messageType（flex 或 text）
 
 ---
 
@@ -384,7 +211,8 @@ return [{
 - 欄位名稱沿用原 Google Sheets header row 的**中文欄位名稱**（`品名`, `廠商`, `加工類型`...）
 - 搜尋比對統一轉 `toLowerCase()` 後做 `includes()`
 - Flex Message 遵循 [LINE Flex Message Simulator](https://developers.line.biz/flex-simulator/) 規範
-- **指令格式**：`品名:關鍵字` / `廠商:關鍵字` / `加工類型:關鍵字`（支援全形冒號 `：` 及空格分隔）
+- **指令格式**：`加工類型:關鍵字` / `廠商:關鍵字`（支援全形冒號 `：` 及空格分隔）
+- **設計特色**：Stateless（無 session 管理），任意文字顯示主目錄
 
 ---
 
