@@ -98,7 +98,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{\n  return JSON.stringify({\n    replyToken: $json.replyToken,\n    messages: [{\n      type: 'flex',\n      altText: '首君報價查詢系統',\n      contents: {\n        type: 'bubble',\n        size: 'mega',\n        header: {\n          type: 'box', layout: 'vertical',\n          contents: [{\n            type: 'text', text: '📋 首君報價查詢系統',\n            weight: 'bold', size: 'xl', color: '#ffffff', align: 'center'\n          }],\n          backgroundColor: '#1DB446', paddingAll: '20px'\n        },\n        body: {\n          type: 'box', layout: 'vertical',\n          contents: [{\n            type: 'text', text: '請選擇查詢方式',\n            size: 'md', align: 'center', color: '#666666'\n          }],\n          paddingAll: '20px'\n        },\n        footer: {\n          type: 'box', layout: 'vertical', spacing: 'md',\n          contents: [\n            {\n              type: 'button', style: 'primary', height: 'md',\n              action: { type: 'message', label: '🔍 搜尋加工類型', text: '搜尋加工類型' },\n              color: '#1DB446'\n            },\n            {\n              type: 'button', style: 'primary', height: 'md',\n              action: { type: 'message', label: '🏭 搜尋廠商', text: '搜尋廠商' },\n              color: '#1976D2'\n            }\n          ],\n          paddingAll: '20px'\n        }\n      }\n    }]\n  });\n}}",
+        "jsonBody": "={{ { replyToken: $json.replyToken, messages: [{ type: 'flex', altText: '首君報價查詢系統', contents: { type: 'bubble', size: 'mega', header: { type: 'box', layout: 'vertical', contents: [{ type: 'text', text: '📋 首君報價查詢系統', weight: 'bold', size: 'xl', color: '#ffffff', align: 'center' }], backgroundColor: '#1DB446', paddingAll: '20px' }, body: { type: 'box', layout: 'vertical', contents: [{ type: 'text', text: '請選擇查詢方式', size: 'md', align: 'center', color: '#666666' }], paddingAll: '20px' }, footer: { type: 'box', layout: 'vertical', spacing: 'md', contents: [{ type: 'button', style: 'primary', height: 'md', action: { type: 'message', label: '🔍 搜尋加工類型', text: '搜尋加工類型' }, color: '#1DB446' }, { type: 'button', style: 'primary', height: 'md', action: { type: 'message', label: '🏭 搜尋廠商', text: '搜尋廠商' }, color: '#1976D2' }], paddingAll: '20px' } } }] } }}",
         "options": {}
       },
       "id": "http-reply-menu",
@@ -125,7 +125,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{\n  const mode = $json.searchMode;\n  const example = mode === '加工類型' ? '加工類型:表面處理' : '廠商:新三和';\n  return JSON.stringify({\n    replyToken: $json.replyToken,\n    messages: [{\n      type: 'text',\n      text: '請輸入' + mode + '關鍵字\\n\\n格式：' + mode + ':關鍵字\\n範例：' + example\n    }]\n  });\n}}",
+        "jsonBody": "={{ { replyToken: $json.replyToken, messages: [{ type: 'text', text: '請輸入' + $json.searchMode + '關鍵字\\n\\n格式：' + $json.searchMode + ':關鍵字\\n範例：' + ($json.searchMode === '加工類型' ? '加工類型:表面處理' : '廠商:新三和') }] } }}",
         "options": {}
       },
       "id": "http-reply-prompt",

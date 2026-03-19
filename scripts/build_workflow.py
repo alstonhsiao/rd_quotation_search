@@ -58,66 +58,10 @@ return [{
 }];"""
 
 # ─── Node 4: Reply Menu jsonBody ───
-reply_menu_body = """\
-={{
-  return JSON.stringify({
-    replyToken: $json.replyToken,
-    messages: [{
-      type: 'flex',
-      altText: '首君報價查詢系統',
-      contents: {
-        type: 'bubble',
-        size: 'mega',
-        header: {
-          type: 'box', layout: 'vertical',
-          contents: [{
-            type: 'text', text: '📋 首君報價查詢系統',
-            weight: 'bold', size: 'xl', color: '#ffffff', align: 'center'
-          }],
-          backgroundColor: '#1DB446', paddingAll: '20px'
-        },
-        body: {
-          type: 'box', layout: 'vertical',
-          contents: [{
-            type: 'text', text: '請選擇查詢方式',
-            size: 'md', align: 'center', color: '#666666'
-          }],
-          paddingAll: '20px'
-        },
-        footer: {
-          type: 'box', layout: 'vertical', spacing: 'md',
-          contents: [
-            {
-              type: 'button', style: 'primary', height: 'md',
-              action: { type: 'message', label: '🔍 搜尋加工類型', text: '搜尋加工類型' },
-              color: '#1DB446'
-            },
-            {
-              type: 'button', style: 'primary', height: 'md',
-              action: { type: 'message', label: '🏭 搜尋廠商', text: '搜尋廠商' },
-              color: '#1976D2'
-            }
-          ],
-          paddingAll: '20px'
-        }
-      }
-    }]
-  });
-}}"""
+reply_menu_body = """={{ { replyToken: $json.replyToken, messages: [{ type: 'flex', altText: '首君報價查詢系統', contents: { type: 'bubble', size: 'mega', header: { type: 'box', layout: 'vertical', contents: [{ type: 'text', text: '📋 首君報價查詢系統', weight: 'bold', size: 'xl', color: '#ffffff', align: 'center' }], backgroundColor: '#1DB446', paddingAll: '20px' }, body: { type: 'box', layout: 'vertical', contents: [{ type: 'text', text: '請選擇查詢方式', size: 'md', align: 'center', color: '#666666' }], paddingAll: '20px' }, footer: { type: 'box', layout: 'vertical', spacing: 'md', contents: [{ type: 'button', style: 'primary', height: 'md', action: { type: 'message', label: '🔍 搜尋加工類型', text: '搜尋加工類型' }, color: '#1DB446' }, { type: 'button', style: 'primary', height: 'md', action: { type: 'message', label: '🏭 搜尋廠商', text: '搜尋廠商' }, color: '#1976D2' }], paddingAll: '20px' } } }] } }}"""
 
 # ─── Node 5: Reply Prompt jsonBody ───
-reply_prompt_body = """\
-={{
-  const mode = $json.searchMode;
-  const example = mode === '加工類型' ? '加工類型:表面處理' : '廠商:新三和';
-  return JSON.stringify({
-    replyToken: $json.replyToken,
-    messages: [{
-      type: 'text',
-      text: '請輸入' + mode + '關鍵字\\n\\n格式：' + mode + ':關鍵字\\n範例：' + example
-    }]
-  });
-}}"""
+reply_prompt_body = """={{ { replyToken: $json.replyToken, messages: [{ type: 'text', text: '請輸入' + $json.searchMode + '關鍵字\\n\\n格式：' + $json.searchMode + ':關鍵字\\n範例：' + ($json.searchMode === '加工類型' ? '加工類型:表面處理' : '廠商:新三和') }] } }}"""
 
 # ─── Node 7: Search & Build Flex ───
 search_build_js = """\
