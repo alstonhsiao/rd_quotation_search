@@ -249,6 +249,7 @@ workflow = {
         # Node 3: Switch Action
         {
             "parameters": {
+                "mode": "rules",
                 "rules": {
                     "values": [
                         {
