@@ -15,7 +15,8 @@
       "position": [
         240,
         380
-      ]
+      ],
+      "webhookId": "98cca22b-b16e-47a5-9027-8e8b600fd2ed"
     },
     {
       "parameters": {
@@ -28,6 +29,323 @@
       "position": [
         440,
         380
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "rowExists",
+        "dataTableId": {
+          "__rl": true,
+          "value": "rdQuotationAccessControl",
+          "mode": "name"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "lineUserId",
+              "keyValue": "={{ $json.userId }}"
+            },
+            {
+              "keyName": "status",
+              "keyValue": "active"
+            }
+          ]
+        }
+      },
+      "id": "dt-access-active",
+      "name": "Access Check Active",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1,
+      "position": [
+        640,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "rowNotExists",
+        "dataTableId": {
+          "__rl": true,
+          "value": "rdQuotationAccessControl",
+          "mode": "name"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "lineUserId",
+              "keyValue": "={{ $json.userId }}"
+            },
+            {
+              "keyName": "status",
+              "keyValue": "active"
+            }
+          ]
+        }
+      },
+      "id": "dt-access-not-active",
+      "name": "Access Check Not Active",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1,
+      "position": [
+        640,
+        520
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "rowExists",
+        "dataTableId": {
+          "__rl": true,
+          "value": "rdQuotationAccessControl",
+          "mode": "name"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "lineUserId",
+              "keyValue": "={{ $json.userId }}"
+            },
+            {
+              "keyName": "status",
+              "keyValue": "blocked"
+            }
+          ]
+        }
+      },
+      "id": "dt-access-blocked",
+      "name": "Access Check Blocked",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1,
+      "position": [
+        840,
+        440
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "rowNotExists",
+        "dataTableId": {
+          "__rl": true,
+          "value": "rdQuotationAccessControl",
+          "mode": "name"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "lineUserId",
+              "keyValue": "={{ $json.userId }}"
+            },
+            {
+              "keyName": "status",
+              "keyValue": "blocked"
+            }
+          ]
+        }
+      },
+      "id": "dt-access-not-blocked",
+      "name": "Access Check Not Blocked",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1,
+      "position": [
+        840,
+        620
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ 'https://api.line.me/v2/bot/profile/' + $json.userId }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer 0O5969QUfQUA0k01anwNsrSw55ENuAZ/Gcb8QVe0LGtMDHovXEJYo6Gmo/p/Fhyqy0QpFKBkz6uXInrhbf9bHi8CXkMeOsizpmMerMj3cVfKIO8cReXFHM15mxAgKtd9s8gexKlgaaiO96eIfsb9egdB04t89/1O/w1cDnyilFU="
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "http-line-profile",
+      "name": "Get LINE Profile",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "continueOnFail": true,
+      "position": [
+        1040,
+        620
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const routeInput = $('Access Check Not Blocked').first().json || {};\nconst profile = $input.first().json || {};\nconst nowIso = new Date().toISOString();\n\nconst userId = routeInput.userId || '';\nconst displayName = profile.displayName || routeInput.lineDisplayName || '未知使用者';\n\nreturn [{\n  json: {\n    replyToken: routeInput.replyToken,\n    lineUserId: userId,\n    lineDisplayName: displayName,\n    role: 'user',\n    status: 'pending',\n    note: '由系統自動建立（待管理員審核）',\n    lastSeenAt: nowIso,\n    requestedAt: nowIso,\n    denyTitle: '申請已送出，待管理員審核',\n    denyMessage: '您目前尚未開通此功能，系統已將您的帳號標記為「申請中」。'\n  }\n}];\n"
+      },
+      "id": "code-build-pending-access",
+      "name": "Build Pending Access Row",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1240,
+        620
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "upsert",
+        "dataTableId": {
+          "__rl": true,
+          "value": "rdQuotationAccessControl",
+          "mode": "name"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "lineUserId",
+              "keyValue": "={{ $json.lineUserId }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "lineUserId": "={{ $json.lineUserId }}",
+            "lineDisplayName": "={{ $json.lineDisplayName }}",
+            "role": "={{ $json.role }}",
+            "status": "={{ $json.status }}",
+            "note": "={{ $json.note }}",
+            "lastSeenAt": "={{ $json.lastSeenAt }}",
+            "requestedAt": "={{ $json.requestedAt }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "lineUserId",
+              "displayName": "lineUserId",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "lineDisplayName",
+              "displayName": "lineDisplayName",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "role",
+              "displayName": "role",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "note",
+              "displayName": "note",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "lastSeenAt",
+              "displayName": "lastSeenAt",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": false
+            },
+            {
+              "id": "requestedAt",
+              "displayName": "requestedAt",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "readOnly": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "dt-upsert-pending-access",
+      "name": "Upsert Pending Access Row",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1,
+      "position": [
+        1440,
+        700
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json || {};\nreturn [{\n  json: {\n    replyToken: input.replyToken,\n    denyTitle: '目前無法使用',\n    denyMessage: '您的帳號狀態為「blocked」，請直接聯繫管理員。'\n  }\n}];\n"
+      },
+      "id": "code-build-blocked-reply",
+      "name": "Build Blocked Reply",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1040,
+        440
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.line.me/v2/bot/message/reply",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer 0O5969QUfQUA0k01anwNsrSw55ENuAZ/Gcb8QVe0LGtMDHovXEJYo6Gmo/p/Fhyqy0QpFKBkz6uXInrhbf9bHi8CXkMeOsizpmMerMj3cVfKIO8cReXFHM15mxAgKtd9s8gexKlgaaiO96eIfsb9egdB04t89/1O/w1cDnyilFU="
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { replyToken: $json.replyToken, messages: [{ type: 'flex', altText: '權限審核通知', contents: { type: 'bubble', size: 'mega', header: { type: 'box', layout: 'vertical', backgroundColor: '#E53935', paddingAll: '16px', contents: [{ type: 'text', text: '🔒 權限審核中', color: '#ffffff', weight: 'bold', size: 'lg' }] }, body: { type: 'box', layout: 'vertical', spacing: 'md', contents: [{ type: 'text', text: ($json.denyTitle || '尚未開通使用權限'), weight: 'bold', size: 'md', wrap: true }, { type: 'text', text: ($json.denyMessage || '系統已收到您的申請，請等待管理員審核。'), size: 'sm', color: '#555555', wrap: true }, { type: 'separator', margin: 'sm' }, { type: 'text', text: '請聯繫管理員協助開通或調整狀態', size: 'xs', color: '#777777', wrap: true }] }, footer: { type: 'box', layout: 'vertical', spacing: 'sm', contents: [{ type: 'button', style: 'secondary', action: { type: 'message', label: '回到主畫面', text: '回到主畫面' } }] } } }] } }}",
+        "options": {}
+      },
+      "id": "http-reply-access-denied",
+      "name": "Reply Access Denied",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1440,
+        520
       ]
     },
     {
@@ -115,8 +433,8 @@
       "type": "n8n-nodes-base.switch",
       "typeVersion": 3.2,
       "position": [
-        640,
-        380
+        840,
+        220
       ]
     },
     {
@@ -142,8 +460,8 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        840,
-        200
+        1040,
+        60
       ]
     },
     {
@@ -169,8 +487,8 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        840,
-        380
+        1040,
+        220
       ]
     },
     {
@@ -183,8 +501,8 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        840,
-        560
+        1040,
+        400
       ]
     },
     {
@@ -196,8 +514,8 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1040,
-        560
+        1240,
+        400
       ]
     },
     {
@@ -223,8 +541,8 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1240,
-        560
+        1440,
+        400
       ]
     },
     {
@@ -240,8 +558,9 @@
       "typeVersion": 2,
       "position": [
         240,
-        760
-      ]
+        980
+      ],
+      "webhookId": "1fd477ca-4748-4009-90cd-7adfd78f2df0"
     },
     {
       "parameters": {
@@ -254,7 +573,7 @@
       "typeVersion": 4.2,
       "position": [
         440,
-        760
+        980
       ]
     },
     {
@@ -267,7 +586,7 @@
       "typeVersion": 2,
       "position": [
         640,
-        760
+        980
       ]
     },
     {
@@ -296,7 +615,7 @@
       "typeVersion": 1.1,
       "position": [
         840,
-        760
+        980
       ]
     }
   ],
@@ -316,7 +635,105 @@
       "main": [
         [
           {
+            "node": "Access Check Active",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Access Check Not Active",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Access Check Active": {
+      "main": [
+        [
+          {
             "node": "Switch Action",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Access Check Not Active": {
+      "main": [
+        [
+          {
+            "node": "Access Check Blocked",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Access Check Not Blocked",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Access Check Blocked": {
+      "main": [
+        [
+          {
+            "node": "Build Blocked Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Blocked Reply": {
+      "main": [
+        [
+          {
+            "node": "Reply Access Denied",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Access Check Not Blocked": {
+      "main": [
+        [
+          {
+            "node": "Get LINE Profile",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get LINE Profile": {
+      "main": [
+        [
+          {
+            "node": "Build Pending Access Row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Pending Access Row": {
+      "main": [
+        [
+          {
+            "node": "Upsert Pending Access Row",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Reply Access Denied",
             "type": "main",
             "index": 0
           }

@@ -3,8 +3,9 @@ set -euo pipefail
 
 # recycle_workflow_webhook.sh
 # 用途：
-# 1) 透過 n8n API 將 workflow deactivate -> activate
-# 2) 立即探測 production webhook 是否已註冊成功
+# 1) 確保 webhook 節點具有 webhookId（根因修復：n8n bug #21614）
+# 2) 透過 n8n API 將 workflow deactivate -> activate
+# 3) 立即探測 production webhook 是否已註冊成功
 #
 # 用法：
 # ./scripts/recycle_workflow_webhook.sh [WORKFLOW_ID]
@@ -54,6 +55,40 @@ probe_webhook() {
   echo "$code|$body"
 }
 
+ensure_webhook_ids() {
+  # Root cause fix: n8n bug #21614 / PR #27161
+  # Webhook nodes without webhookId get the wrong path registered.
+  echo "🔧 確保 webhook 節點都有 webhookId..."
+
+  local wf_json
+  wf_json=$(curl -sS \
+    "${N8N_HOST}/api/v1/workflows/${WORKFLOW_ID}" \
+    -H "X-N8N-API-KEY: ${N8N_API_KEY}")
+
+  local needs_fix
+  needs_fix=$(python3 -c "
+import json, sys
+wf = json.loads('''${wf_json//\'/\\\'}''')
+for n in wf.get('nodes', []):
+    if n.get('type') == 'n8n-nodes-base.webhook' and not n.get('webhookId'):
+        print('yes')
+        sys.exit(0)
+print('no')
+" 2>/dev/null || echo "error")
+
+  if [[ "$needs_fix" == "yes" ]]; then
+    echo "  發現缺少 webhookId 的 webhook 節點，正在修復..."
+    python3 "${SCRIPT_DIR}/fix_webhook_id.py"
+    return 0
+  elif [[ "$needs_fix" == "no" ]]; then
+    echo "  ✅ 所有 webhook 節點都已有 webhookId"
+    return 1  # no fix needed, will still deactivate/activate
+  else
+    echo "  ⚠️  無法檢查 webhookId，繼續 deactivate/activate..."
+    return 1
+  fi
+}
+
 deactivate_activate_once() {
   curl -sS -X POST \
     "${N8N_HOST}/api/v1/workflows/${WORKFLOW_ID}/deactivate" \
@@ -71,6 +106,19 @@ deactivate_activate_once() {
 echo "🔁 Workflow: ${WORKFLOW_ID}"
 echo "🌐 Host: ${N8N_HOST}"
 echo "🪝 Webhook: ${N8N_WEBHOOK_PATH}"
+echo ""
+
+# Step 0: Ensure webhookId exists (root cause fix)
+if ensure_webhook_ids; then
+  # fix_webhook_id.py already did deactivate/activate + probe
+  echo ""
+  probe="$(probe_webhook)"
+  code="${probe%%|*}"
+  if [[ "$code" != "404" ]]; then
+    echo "✅ Webhook 已可用 (webhookId 修復後)"
+    exit 0
+  fi
+fi
 
 for ((i=1; i<=ATTEMPTS; i++)); do
   echo ""

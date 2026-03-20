@@ -267,8 +267,103 @@ return [{ json: { action: 'menu', replyToken } }];
 
 ### 5) Zeabur webhook 啟用注意事項（關鍵）
 
-- 在目前環境，僅用 API `activate/deactivate` 後，production webhook 可能仍顯示未註冊（404）
-- 發布/更新 workflow 後，需到 n8n UI 手動切換一次 Active（OFF -> ON）以完成 webhook 註冊
+- ~~在目前環境，僅用 API `activate/deactivate` 後，production webhook 可能仍顯示未註冊（404）~~
+- ~~發布/更新 workflow 後，需到 n8n UI 手動切換一次 Active（OFF -> ON）以完成 webhook 註冊~~
+- **已解決（2026-03-20）**：見下方「2026-03-20 Webhook 404 根本原因修復」
 - 驗證端點：
   - `POST /webhook/line-quotation`
   - `GET /webhook/quotation-view`
+
+---
+
+## 2026-03-20 Webhook 404 根本原因修復（Production）
+
+### 問題描述
+
+透過 n8n API `activate/deactivate` 啟用 workflow 後，production webhook 持續回傳 404 錯誤：
+```
+{"code":404,"message":"The requested webhook \"POST line-quotation\" is not registered."}
+```
+
+即使 workflow 顯示 active=true，且多次 deactivate→activate 循環後仍無效。先前只能依賴手動在 n8n UI 切換 Active 開關。
+
+### 根本原因（n8n bug #21614）
+
+**n8n 已知 bug**：
+- GitHub Issue: [#21614](https://github.com/n8n-io/n8n/issues/21614) "Deployment + Activation via API does not register webhook path"
+- 官方修復 PR: [#27161](https://github.com/n8n-io/n8n/pull/27161) "Assign webhook ID to API-created webhook nodes"（尚未合併至 stable，截至 2026-03-20）
+
+**技術細節**：
+1. 透過 n8n **public API 建立或更新**的 workflow，其 webhook 節點**不會自動取得 `webhookId` 屬性**
+2. 當 webhook 節點缺少 `webhookId` 時，n8n 的 `getNodeWebhookPath()` 會建立**錯誤的路徑格式**
+3. 已註冊的 webhook 路徑無法匹配傳入的 HTTP 請求 → 404 "not registered"
+4. n8n UI 在儲存 workflow 時**會自動指派 `webhookId`**（UUID），所以手動切換能修復問題
+
+### 修復方案
+
+**1. 手動為 webhook 節點新增 `webhookId`**
+
+檢查目前 workflow：
+```bash
+curl -s "$N8N_HOST/api/v1/workflows/$WORKFLOW_ID" -H "X-N8N-API-KEY: $API_KEY" \
+  | python3 -c "
+import json,sys
+wf=json.load(sys.stdin)
+for n in wf.get('nodes',[]):
+    if n.get('type')=='n8n-nodes-base.webhook':
+        print(f\"{n['name']}: webhookId={n.get('webhookId','MISSING')}\")
+"
+```
+
+若顯示 `MISSING`，執行修復腳本：
+```bash
+python3 scripts/fix_webhook_id.py
+```
+
+**2. PUT workflow 時的注意事項**
+
+n8n public API 對 `settings` 物件有嚴格驗證：
+```
+{"message":"request/body/settings must NOT have additional properties"}
+```
+
+只能包含以下已知欄位：
+- `executionOrder`
+- `saveManualExecutions`
+- `callerPolicy`
+- `errorWorkflow`
+
+**3. 自動化修復腳本**
+
+新增檔案：
+- **`scripts/fix_webhook_id.py`** — 完整修復流程：
+  1. GET workflow via API
+  2. 為缺少 `webhookId` 的 webhook 節點新增 UUID
+  3. PUT 回 n8n（使用乾淨的 settings）
+  4. Deactivate → Activate 重新註冊
+  5. 驗證 webhook 回應 200 OK
+
+- **`scripts/recycle_workflow_webhook.sh`** — 整合 `webhookId` 自動檢查：
+  - 執行前先呼叫 `fix_webhook_id.py` 檢查並修復
+  - 確保 deactivate/activate 能正確註冊 webhook
+
+### 驗證結果
+
+修復後驗證：
+```bash
+# POST webhook
+curl -X POST https://alstonn8n2026.zeabur.app/webhook/line-quotation \
+  -H "Content-Type: application/json" \
+  -d '{"events":[]}'
+# ✅ HTTP 200: {"message":"Workflow was started"}
+
+# GET webhook  
+curl https://alstonn8n2026.zeabur.app/webhook/quotation-view
+# ✅ HTTP 200
+```
+
+### 未來注意事項
+
+- n8n 官方修復 PR #27161 合併後，此問題將自動解決
+- 目前透過 API 建立/更新的 workflow 都需要執行 `fix_webhook_id.py`
+- 本地 `n8n_workflow.json` 已更新，包含正確的 `webhookId`（2026-03-20）
