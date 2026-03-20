@@ -367,3 +367,86 @@ curl https://alstonn8n2026.zeabur.app/webhook/quotation-view
 - n8n 官方修復 PR #27161 合併後，此問題將自動解決
 - 目前透過 API 建立/更新的 workflow 都需要執行 `fix_webhook_id.py`
 - 本地 `n8n_workflow.json` 已更新，包含正確的 `webhookId`（2026-03-20）
+
+---
+
+## 2026-03-20 Access Control 流程修復（Production）
+
+### 問題描述
+
+Execution 34063 顯示 `status: success`，但 workflow 僅執行了 3 個節點便停止：
+```
+LINE Webhook → Parse & Route → Access Check Active (輸出空陣列) → 結束
+```
+
+使用者點選「搜尋廠商」按鈕後，Access Check Active 查詢 DataTable 失敗（查無結果），導致下游節點全部不執行、LINE 無回應。
+
+### 根本原因（2 個 bug）
+
+#### Bug 1：Parse & Route 未在所有路徑帶上 `userId`
+
+`action: 'prompt'` 和 `action: 'menu'` 的 return 物件缺少 `userId` 欄位：
+```javascript
+// 修復前 — prompt 路徑缺少 userId
+return [{ json: { action: 'prompt', replyToken, searchMode: modeMap[text] } }];
+
+// 修復前 — menu 路徑缺少 userId
+return [{ json: { action: 'menu', replyToken } }];
+```
+
+而 Access Check Active 使用 `$json.userId` 查詢 DataTable → `undefined` → 查無結果 → 空輸出。
+
+#### Bug 2：Code Node v2 只有 1 個 output，main[1] 永遠無資料
+
+原始連線：
+```
+Parse & Route main[0] → Access Check Active      ← 所有資料走這
+Parse & Route main[1] → Access Check Not Active   ← 永遠收不到資料
+```
+
+n8n Code node v2 只有 1 個 output branch（`main[0]`），`main[1]` 永遠不會觸發。
+這導致「未授權使用者」的 blocked/pending 流程永遠不會執行。
+
+### 修復方案
+
+**1. Parse & Route：所有 return 路徑加上 `userId`**
+
+修復後所有 7 個 return 路徑都包含 `userId`：
+```javascript
+// menu
+return [{ json: { action: 'menu', replyToken, userId } }];
+
+// prompt
+return [{ json: { action: 'prompt', replyToken, userId, searchMode: modeMap[text] } }];
+
+// search（原本已有，不變）
+return [{ json: { action: 'search', replyToken, userId, searchMode, keyword, page } }];
+```
+
+**2. Connections：合併為同一個 output branch**
+
+修復後：
+```
+Parse & Route main[0] → [Access Check Active, Access Check Not Active]
+```
+
+兩個 DataTable 節點同時從 `main[0]` 接收資料：
+- `Access Check Active`（`rowExists`）：使用者已授權 → 放行到 Switch Action
+- `Access Check Not Active`（`rowNotExists`）：使用者未授權 → 進入 blocked/pending 流程
+
+### 驗證結果
+
+修復後部署到 n8n：
+- Parse & Route：7 個 return 路徑全部包含 `userId` ✅
+- Connections：`main[0]` 同時連接 Access Check Active 和 Access Check Not Active ✅
+- POST `/webhook/line-quotation` → 200 OK ✅
+- GET `/webhook/quotation-view` → 200 OK ✅
+
+### 修復腳本
+
+- **`scripts/fix_access_control.py`** — 自動修復流程：
+  1. 更新 Parse & Route jsCode（加入 userId）
+  2. 合併 connections（main[1] → main[0]）
+  3. PUT 回 n8n
+  4. Deactivate → Activate 重新註冊
+  5. 驗證 webhook 回應
