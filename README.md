@@ -21,7 +21,7 @@ LINE × n8n 供應商報價搜尋系統。透過 LINE 按鈕互動，搜尋 Goog
 
 ```
 Google Sheets (私有試算表)
-    ↓ (手動/自動同步，每天 2 次)
+    ↓ (手動同步，自動同步已停用)
 本機/GitHub Actions 腳本
     ↓
 quotations.json (存於 GitHub)
@@ -37,20 +37,20 @@ n8n Workflow (讀取 JSON)
 - ✅ 無需 Google Service Account（可手動同步）
 - ✅ Stateless（無 session 狀態）
 - ✅ JSON 資料庫（快速搜尋）
-- ✅ 自動同步（每天 09:00 & 21:00）
+- ⚠️ 自動同步已停用（`sync-sheets.yml` 加 `if: false`，最後資料 2026-03-19）
 - ✅ 單一 Workflow 完成所有邏輯
 
 ---
 
 ## 資料來源
 
-**資料庫架構**：JSON 靜態檔案（每天自動同步 2 次）
+**資料庫架構**：JSON 靜態檔案（手動同步）
 
 - **來源試算表**：`首君 供應商報價管理表單-1`
 - **試算表 ID**：`1WZ_sZvfBjUiIPHrY6WkdR1yBXLHdYB_Fb8T3VTYQ0GI`
 - **主資料分頁**：`表單回應 1`
 - **JSON 資料庫**：`quotations.json`（託管於 GitHub）
-- **同步頻率**：每天 09:00 和 21:00（自動執行）
+- **同步頻率**：手動執行（自動同步已停用，最後資料 2026-03-19）
 
 ### 主資料欄位
 
@@ -172,8 +172,8 @@ git push
 
 - `.env.local` 已加入 `.gitignore`，切勿直接 commit 機密資訊
 - **JSON 資料庫**：`quotations.json` 為公開檔案，確保不含敏感資訊
-- **同步頻率**：預設每天 09:00 和 21:00 更新（可在 crontab 或 GitHub Actions 調整）
-- **搜尋延遲**：資料更新後最長延遲 12 小時（視同步時間而定）
+- **自動同步已停用**：`sync-sheets.yml` 加 `if: false`，如需重啟請修復 Service Account Secret
+- **手動同步**：執行 `python3 scripts/sync_sheets_to_json.py`，再 commit `quotations.json`
 - Stateless 設計：每次搜尋獨立執行，無 session 狀態
 - LINE Flex Carousel 最多支援 12 個 Bubble，本專案限制 10 筆確保相容
 
